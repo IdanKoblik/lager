@@ -45,10 +45,13 @@ Start the lab from the repository root:
 The script creates copy-on-write disk overlays, so it leaves the base image
 unchanged. It opens two QEMU windows. Each VM has a user-network interface for
 SSH management and a second interface connected to the other VM through a
-QEMU socket link. That link is isolated from the host network. The sender is
-assigned `192.168.77.1`; the receiver is `192.168.77.2`.
+QEMU socket link. That link is isolated from the host network. The guests are
+named `sender` and `receiver`, with addresses `192.168.77.1` and
+`192.168.77.2`. The script pings the receiver from the sender before injecting
+the payload and stops if the link is unreachable.
 
-The script enables serial kernel logging in each Alpine overlay, deploys the
+The script enables serial kernel logging, including debug-level `printk`
+messages, in each Alpine overlay. It deploys the
 Lager module to the receiver, and puts the Notch executable on the sender only.
 It then automatically sends a 120-byte printable ICMP payload. The receiver's
 serial log path is printed by the script; follow it from another host terminal
@@ -68,4 +71,5 @@ make
 ```
 
 The module is written to `build/lager.ko`. The VM deployment script builds it
-against the receiver's own kernel headers instead of the host's.
+against the receiver's own kernel headers instead of the host's. Builds use
+the available processor count by default; override it with `make JOBS=2`.

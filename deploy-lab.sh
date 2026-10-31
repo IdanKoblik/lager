@@ -78,8 +78,9 @@ conf=/boot/extlinux.conf
 [ -f "$conf" ] || { echo "$conf not found; configure console=ttyS0,115200n8 console=tty0 in the guest bootloader" >&2; exit 1; }
 sed -i -E '/^[[:space:]]*APPEND([[:space:]]|$)/ {
     s/[[:space:]]console=[^[:space:]]+//g
+    s/[[:space:]]ignore_loglevel//g
     s/[[:space:]]*$//
-    s/$/ console=ttyS0,115200n8 console=tty0/
+    s/$/ console=ttyS0,115200n8 console=tty0 ignore_loglevel/
 }' "$conf"
 REMOTE
     printf 'Enabling serial kernel logging on %s and rebooting it...\n' "$role"
@@ -108,6 +109,17 @@ ip link set "$iface" up
 ip addr flush dev "$iface"
 ip addr add "$address/24" dev "$iface"
 printf '%s\n' "$iface"
+REMOTE
+}
+
+set_guest_hostname() {
+    local port="$1"
+    local name="$2"
+    ssh_root "$port" sh -s -- "$name" <<'REMOTE'
+set -eu
+name="$1"
+printf '%s\n' "$name" > /etc/hostname
+hostname "$name"
 REMOTE
 }
 
@@ -146,6 +158,8 @@ wait_for_ssh "$RECEIVER_SSH_PORT" receiver
 wait_for_ssh "$SENDER_SSH_PORT" sender
 enable_serial_console "$RECEIVER_SSH_PORT" receiver
 enable_serial_console "$SENDER_SSH_PORT" sender
+set_guest_hostname "$RECEIVER_SSH_PORT" receiver
+set_guest_hostname "$SENDER_SSH_PORT" sender
 
 printf 'Assigning isolated lab addresses...\n'
 RECEIVER_IFACE="$(configure_lab_nic "$RECEIVER_SSH_PORT" "$RECEIVER_MAC" "$RECEIVER_IP")"
@@ -156,6 +170,7 @@ SSH_CONFIG="$SSH_CONFIG_FILE" SSH_PORT="$RECEIVER_SSH_PORT" "$ROOT/deploy.sh" ro
 scp -F /dev/null -P "$RECEIVER_SSH_PORT" -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
     "root@127.0.0.1:/usr/local/bin/notch" "$RUN_DIR/notch"
 ssh_root "$RECEIVER_SSH_PORT" rm -f /usr/local/bin/notch
+ssh_root "$RECEIVER_SSH_PORT" sh -c 'lsmod | grep -q "^lager "' || die "lager did not load on receiver"
 
 printf 'Installing Notch on sender only...\n'
 scp -F /dev/null -P "$SENDER_SSH_PORT" -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
@@ -175,6 +190,8 @@ scp -F /dev/null -P "$SENDER_SSH_PORT" -o BatchMode=yes -o StrictHostKeyChecking
 
 printf 'Receiver: %s (lab NIC %s), lager loaded\n' "$RECEIVER_IP" "$RECEIVER_IFACE"
 printf 'Sender:   %s (lab NIC %s)\n' "$SENDER_IP" "$SENDER_IFACE"
+printf 'Checking sender-to-receiver connectivity...\n'
+ssh_root "$SENDER_SSH_PORT" ping -I "$SENDER_IFACE" -c 1 -W 2 "$RECEIVER_IP"
 printf 'Sending a 120-byte printable payload; receiver log: %s/receiver-serial.log\n' "$RUN_DIR"
 ssh_root "$SENDER_SSH_PORT" /usr/local/bin/notch inject \
     --channel icmp --no-auth --dest "$RECEIVER_IP" --interface "$SENDER_IFACE" \

@@ -1,4 +1,5 @@
 #include "filter.h"
+#include "linux/netfilter.h"
 #include <linux/kern_levels.h>
 #include <linux/netfilter.h>
 #include <linux/printk.h>
@@ -62,7 +63,12 @@ static unsigned int hook(void *priv, struct sk_buff *skb, const struct nf_hook_s
         return NF_ACCEPT;
     }
 
-    return drop ? NF_DROP : NF_ACCEPT;
+    if (drop) {
+        printk(KERN_INFO "Dropping %s packet (ipv4=%pI4)\n", proto_name, &ip_header->saddr);
+        return NF_DROP;
+    }
+    
+    return NF_ACCEPT;
 }
 
 static int __init lager_init(void) {

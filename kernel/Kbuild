@@ -1,2 +1,3 @@
 obj-m += lager.o
 lager-y := $(patsubst %.c,%.o,$(notdir $(wildcard $(src)/*.c)))
+lager-y += $(patsubst $(src)/%,%,$(patsubst %.c,%.o,$(wildcard $(src)/stats/*.c)))
