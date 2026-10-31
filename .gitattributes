@@ -1,0 +1,5 @@
+*.c linguist-language=C
+*.h linguist-language=C
+
+# The Rust project is a submodule, not part of this repository's source mix.
+notch/** linguist-vendored

@@ -1,0 +1,2 @@
+obj-m += lager.o
+lager-y := $(patsubst %.c,%.o,$(notdir $(wildcard $(src)/*.c)))

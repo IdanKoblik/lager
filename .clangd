@@ -1,0 +1,18 @@
+CompileFlags:
+  Add:
+    - -msse2
+  Remove:
+    - -mrecord-mcount
+    - -mindirect-branch*
+    - -mfunction-return*
+    - -mharden-sls=*
+    - -mskip-rax-setup
+    - -mno-fp-ret-in-387
+    - -mpreferred-stack-boundary=*
+    - -mstack-protector-guard*
+    - -fconserve-stack
+    - -fno-allow-store-data-races
+    - -falign-jumps=*
+    - -fmin-function-alignment=*
+    - -fzero-init-padding-bits=*
+    - -fno-builtin-wcslen

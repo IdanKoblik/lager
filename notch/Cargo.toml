@@ -1,0 +1,21 @@
+[package]
+name = "notch"
+version = "0.1.0"
+edition = "2024"
+description = "Network steganoghrapy tool"
+
+[dependencies]
+aead = "0.6.1"
+argon2 = "0.6.0"
+chacha20poly1305 = "0.11.0"
+clap = { version = "4.6.7", features = ["derive"] }
+hmac = "0.13.0"
+indicatif = "0.18.6"
+libc = "0.2.191"
+pcap = "2.5.0"
+pnet = "0.35.0"
+rand = "0.10.3"
+sha2 = "0.11.0"
+thiserror = "2.0.21"
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
