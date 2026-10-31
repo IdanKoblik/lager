@@ -47,7 +47,7 @@ struct source_enrty *filter_get_or_create_source(struct filter *state, __be32 ip
     entry = kzalloc(sizeof(*entry), GFP_ATOMIC);
     if (!entry) {
         spin_unlock_bh(&state->lock);
-        printk(KERN_ERR "Failed to allocate source entry (ipv4=%d)\n", ip);
+        printk(KERN_ERR "Failed to allocate source entry (ipv4=%pI4)\n", &ip);
         return NULL;
     }
     
@@ -63,9 +63,13 @@ struct source_enrty *filter_get_or_create_source(struct filter *state, __be32 ip
     return entry;
 }
 
-bool filter_hook(struct filter *state, struct iphdr *ip) {
-    if (ip->protocol == IPPROTO_ICMP) 
-        return icmp_state_hook(state, ip);
+bool filter_hook(struct filter *state, struct iphdr *ip, bool *drop) {
+    if (!state || !ip || !drop)
+        return false;
+
+    *drop = false;
+    if (ip->protocol == IPPROTO_ICMP)
+        return icmp_state_hook(state, ip, drop);
     
     return true;
 }

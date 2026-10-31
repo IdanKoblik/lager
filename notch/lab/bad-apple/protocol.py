@@ -1,6 +1,0 @@
-WIDTH = 96
-HEIGHT = 72
-
-OP_RUN = 0x00
-OP_DIMS = 0x01
-OP_FLIP = 0x02

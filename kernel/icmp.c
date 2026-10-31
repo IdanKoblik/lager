@@ -8,12 +8,17 @@
 #include <linux/in.h>
 #include <linux/icmp.h>
 #include <linux/kernel.h>
+#include <linux/spinlock.h>
 
 #define PRINTABLE_ASCII_START 0x20
 #define PRINTABLE_ASCII_END 0x7E
 #define TOTAL_PRINTABLE_ASCII (PRINTABLE_ASCII_END - PRINTABLE_ASCII_START + 1)
 
-#define PRINTABLE_FRACTION (95 / 256)
+#define PRINTABLE_FRACTION_NUM 95ULL
+#define PRINTABLE_FRACTION_DEN 256ULL
+#define PRINTABLE_FRACTION_COMPLEMENT (PRINTABLE_FRACTION_DEN - PRINTABLE_FRACTION_NUM)
+#define MIN_ICMP_BYTES_BEFORE_DROP 100ULL
+#define ICMP_ZSCORE_DROP_THRESHOLD 4
 
 static u32 total_printable(unsigned char *target, size_t len) {
     u32 count = 0;
@@ -44,9 +49,11 @@ struct icmphdr *parse_icmp(struct iphdr *ip) {
     return icmp;
 }
 
-bool icmp_state_hook(struct filter *state, struct iphdr *ip) {
-    if (!state || !ip)
+bool icmp_state_hook(struct filter *state, struct iphdr *ip, bool *drop) {
+    if (!state || !ip || !drop)
         return false;
+
+    *drop = false;
 
     struct icmphdr *icmp = parse_icmp(ip);
     if (icmp == NULL) {
@@ -54,23 +61,52 @@ bool icmp_state_hook(struct filter *state, struct iphdr *ip) {
         return false;
     }
 
-    printk(KERN_DEBUG "Searching for entry (ipv4=%d)\n", ip->saddr);
+    if (icmp->type != ICMP_ECHO || icmp->code != 0)
+        return true;
+
+    printk(KERN_DEBUG "Searching for entry (ipv4=%pI4)\n", &ip->saddr);
     struct source_enrty *source = filter_get_or_create_source(state, ip->saddr);
     if (!source) {
-        printk(KERN_ERR "Failed to load source (ipv4=%d)\n", ip->saddr);
+        printk(KERN_ERR "Failed to load source (ipv4=%pI4)\n", &ip->saddr);
         return false;
     }
-    printk(KERN_DEBUG "Entry (ipv4=%d) was found\n", ip->saddr);
+    printk(KERN_DEBUG "Entry (ipv4=%pI4) was found\n", &ip->saddr);
 
-    // TODO method
     __be16 identifier = icmp->un.echo.id;
+
+    spin_lock_bh(&state->lock);
+    if (source->icmp.blocked) {
+        *drop = true;
+        spin_unlock_bh(&state->lock);
+        return true;
+    }
+
     source->icmp.total_bytes += sizeof(identifier);
     source->icmp.total_printable += total_printable((unsigned char *)&identifier, sizeof(identifier)); 
 
     u64 total_bytes = source->icmp.total_bytes;
-    u64 total_printable = source->icmp.total_printable;
-    u32 z_score = (total_printable - total_bytes * PRINTABLE_FRACTION) / int_sqrt((total_bytes * PRINTABLE_FRACTION) * (1 - PRINTABLE_FRACTION)); 
-    printk(KERN_INFO "TEST: %d\n", z_score);
+    u64 printable_bytes = source->icmp.total_printable;
+
+    // Keep the variance product and scaled numerator within 64-bit range
+    while (total_bytes > (~0ULL / (PRINTABLE_FRACTION_NUM * PRINTABLE_FRACTION_COMPLEMENT))) {
+        total_bytes >>= 1;
+        printable_bytes >>= 1;
+    }
+
+    s64 numerator = (s64)(printable_bytes * PRINTABLE_FRACTION_DEN) - (s64)(total_bytes * PRINTABLE_FRACTION_NUM);
+    u64 variance_scaled = total_bytes * PRINTABLE_FRACTION_NUM * PRINTABLE_FRACTION_COMPLEMENT;
+    u32 denominator = int_sqrt64(variance_scaled);
+    s64 z_score = denominator ? numerator / denominator : 0;
+    bool newly_blocked = total_bytes >= MIN_ICMP_BYTES_BEFORE_DROP &&
+                         z_score >= ICMP_ZSCORE_DROP_THRESHOLD;
+    if (newly_blocked)
+        source->icmp.blocked = true;
+    *drop = source->icmp.blocked;
+    spin_unlock_bh(&state->lock);
+
+    if (newly_blocked)
+        printk(KERN_WARNING "Dropping ICMP echo requests from %pI4 (bytes=%llu z=%lld)\n",
+               &ip->saddr, (unsigned long long)total_bytes, (long long)z_score);
 
     return true;
 }

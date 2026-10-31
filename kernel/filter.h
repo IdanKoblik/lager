@@ -12,6 +12,7 @@
 struct icmp_stats {
     u64 total_bytes;
     u64 total_printable;
+    bool blocked;
 };
 
 struct source_enrty {
@@ -30,4 +31,4 @@ struct filter {
 
 void filter_init(struct filter *state);
 struct source_enrty *filter_get_or_create_source(struct filter *state, __be32 ip);
-bool filter_hook(struct filter *state, struct iphdr *ip);
+bool filter_hook(struct filter *state, struct iphdr *ip, bool *drop);

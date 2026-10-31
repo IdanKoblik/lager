@@ -1,4 +1,0 @@
-scapy
-numpy
-matplotlib
-pexpect

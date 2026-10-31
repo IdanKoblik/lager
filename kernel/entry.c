@@ -12,6 +12,7 @@
 #include <linux/net_namespace.h>
 #include <linux/skbuff.h>
 #include <linux/ip.h>
+#include <linux/icmp.h>
 #include <net/ip.h>
 
 MODULE_LICENSE("GPL");
@@ -35,7 +36,7 @@ static unsigned int hook(void *priv, struct sk_buff *skb, const struct nf_hook_s
     if (ip_header->version != IPV4_VERSION || ip_header->ihl < IPV4_HEADER_LEN)
         return NF_ACCEPT;
 
-    unsigned int header_len = ip_header->ihl;
+    unsigned int header_len = ip_header->ihl * 4;
     if (!pskb_may_pull(skb, header_len))
         return NF_ACCEPT;
 
@@ -43,18 +44,25 @@ static unsigned int hook(void *priv, struct sk_buff *skb, const struct nf_hook_s
     if (ip_is_fragment(ip_header))
         return NF_ACCEPT; // TODO handle
 
+    if (ip_header->protocol == IPPROTO_ICMP &&
+        !pskb_may_pull(skb, header_len + sizeof(struct icmphdr)))
+        return NF_ACCEPT;
+
+    ip_header = ip_hdr(skb);
+
     // TODO Parse ICMP and TCP SYN packets
     const char *proto_name = ip_proto_name(ip_header->protocol); 
     if (!proto_name)
         return NF_ACCEPT;
 
     printk(KERN_NOTICE "Inspecting %s packet\n", proto_name); 
-    if (!filter_hook(&filter_state, ip_header)) { 
+    bool drop = false;
+    if (!filter_hook(&filter_state, ip_header, &drop)) {
         printk(KERN_ERR "Lager Netfilter hook failed\n");
         return NF_ACCEPT;
     }
 
-    return NF_ACCEPT;
+    return drop ? NF_DROP : NF_ACCEPT;
 }
 
 static int __init lager_init(void) {

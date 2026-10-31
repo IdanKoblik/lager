@@ -4,6 +4,10 @@ set -euo pipefail
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 TARGET="${1:-${SSH_TARGET:-}}"
 PORT="${SSH_PORT:-2222}"
+SSH_CONFIG_ARGS=()
+if [ -n "${SSH_CONFIG:-}" ]; then
+    SSH_CONFIG_ARGS=(-F "$SSH_CONFIG")
+fi
 STAGE="${REMOTE_STAGE:-/tmp/lager-deploy}"
 TMP="$(mktemp -d)"
 ARCHIVE="$TMP/lager-source.tar.gz"
@@ -19,10 +23,10 @@ trap 'rm -rf "$TMP"' EXIT
 [ -f "$ROOT/notch/Cargo.toml" ] || fail "notch submodule missing; run git submodule update --init --recursive"
 
 tar -C "$ROOT" --exclude='./.git' --exclude='./notch/.git' --exclude='./notch/target' --exclude='./build' -czf "$ARCHIVE" Makefile kernel notch
-ssh -p "$PORT" "$TARGET" "mkdir -p '$STAGE/src'"
-scp -P "$PORT" "$ARCHIVE" "$TARGET:$STAGE/"
+ssh "${SSH_CONFIG_ARGS[@]}" -p "$PORT" "$TARGET" "mkdir -p '$STAGE/src'"
+scp "${SSH_CONFIG_ARGS[@]}" -P "$PORT" "$ARCHIVE" "$TARGET:$STAGE/"
 
-ssh -p "$PORT" "$TARGET" "sh -s '$STAGE'" <<'REMOTE'
+ssh "${SSH_CONFIG_ARGS[@]}" -p "$PORT" "$TARGET" "sh -s '$STAGE'" <<'REMOTE'
 set -eu
 STAGE="$1"
 KERNEL="$(uname -r)"
